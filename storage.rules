@@ -1,0 +1,56 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuth()   { return request.auth != null; }
+    function uid()      { return request.auth.uid; }
+    function role()     { return request.auth.token.get('role', 'citizen'); }
+
+    function isOfficer()    { return isAuth() && (role() == 'district_officer' || role() == 'super_admin'); }
+    function isSuperAdmin() { return isAuth() && role() == 'super_admin'; }
+    function isOwner(u)     { return isAuth() && uid() == u; }
+
+    function isImageType()  { return request.resource.contentType.matches('image/.*'); }
+    function maxSizeMB(n)   { return request.resource.size <= n * 1024 * 1024; }
+
+    // ── Alert media (images, PDFs attached to alerts) ──────────────
+    match /alerts/{alertId}/{allPaths=**} {
+      allow read:   if isAuth();
+      allow write:  if isOfficer() && maxSizeMB(10);
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── Alert GeoJSON (large polygons stored as files) ─────────────
+    match /geojson/{fileName} {
+      allow read:   if isAuth();
+      allow write:  if isOfficer() && request.resource.size <= 5 * 1024 * 1024;
+      allow delete: if isOfficer();
+    }
+
+    // ── SOS photo attachments ──────────────────────────────────────
+    match /sos/{citizenUid}/{sosId}/{fileName} {
+      allow read:  if isOwner(citizenUid) || isOfficer();
+      allow write: if isOwner(citizenUid) && isImageType() && maxSizeMB(5);
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── User profile avatars ───────────────────────────────────────
+    match /avatars/{userId} {
+      allow read:   if isAuth();
+      allow write:  if isOwner(userId) && isImageType() && maxSizeMB(2);
+      allow delete: if isOwner(userId) || isSuperAdmin();
+    }
+
+    // ── Public app assets (PWA icons, splash images) ──────────────
+    match /public/{allPaths=**} {
+      allow read:   if true;
+      allow write:  if isSuperAdmin();
+    }
+
+    // ── Default deny ───────────────────────────────────────────────
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

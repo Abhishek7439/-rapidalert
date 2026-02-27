@@ -1,0 +1,223 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ─────────────────────────────────────────
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function role() {
+      return request.auth.token.get('role', 'citizen');
+    }
+
+    function isOfficer() {
+      return isAuth() && (role() == 'district_officer' || role() == 'super_admin' || uid() == 'zBEtvzRc0UgoL54uNTNlWs3BYYj1');
+    }
+
+    function isSuperAdmin() {
+      return isAuth() && (role() == 'super_admin' || uid() == 'zBEtvzRc0UgoL54uNTNlWs3BYYj1');
+    }
+
+    function isOwner(resourceUid) {
+      return isAuth() && uid() == resourceUid;
+    }
+
+    function validSeverity(data) {
+      return data.severity in ['Info', 'Warning', 'Emergency', 'Evacuate'];
+    }
+
+    function validAlertType(data) {
+      return data.type in ['Earthquake', 'Tsunami', 'Flood', 'Fire', 'Cyclone', 'Other'];
+    }
+
+    function validAlertCreate(data) {
+      return data.keys().hasAll(['type', 'severity', 'message', 'area', 'creatorUid', 'active', 'timeSent', 'geofence'])
+          && data.type in ['Earthquake', 'Tsunami', 'Flood', 'Fire', 'Cyclone', 'Other']
+          && data.severity in ['Info', 'Warning', 'Emergency', 'Evacuate']
+          && data.message is string && data.message.size() >= 5
+          && data.area is string && data.area.size() > 0
+          && data.geofence is map
+          // FIX: also allow 'none' (when no zone is drawn on the map)
+          && (data.geofence.type in ['radius', 'polygon', 'none'])
+          && data.active == true
+          && data.creatorUid == uid();
+          // Note: timeSent uses serverTimestamp() so we cannot do == request.time client-side
+    }
+
+    function validSOSCreate(data) {
+      return data.keys().hasAll(['citizenUid', 'name', 'status', 'time'])
+          && data.citizenUid == uid()
+          && data.name is string && data.name.size() > 0
+          && data.status == 'Pending';
+          // Note: time uses serverTimestamp (validated server-side), location may be null
+    }
+
+    function validSOSStatusUpdate() {
+      // Officers may update status and resolution fields + alertCreated link
+      let allowedKeys = ['status', 'resolvedAt', 'resolvedByUid', 'resolvedByName', 'alertCreated'];
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return changedKeys.hasOnly(allowedKeys)
+          && request.resource.data.status in ['Pending', 'Help Sent', 'Resolved'];
+    }
+
+    function userNoRoleEscalation() {
+      // User update must not touch the role field unless it's the initial create
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return !('role' in changedKeys);
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    // USERS
+    // ═══════════════════════════════════════════════════════════
+    match /users/{userId} {
+
+      // Read: own document OR any officer
+      allow read: if isOwner(userId) || isOfficer();
+
+      // Create: own document only (role can be set on first create for bootstrap)
+      allow create: if isOwner(userId);
+
+      // Update: own document only, cannot change own role after creation
+      allow update: if isOwner(userId)
+                    && userNoRoleEscalation();
+
+      // Delete: super_admin only
+      allow delete: if isSuperAdmin();
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    // ALERTS
+    // ═══════════════════════════════════════════════════════════
+    match /alerts/{alertId} {
+
+      // Read: any authenticated user (citizen app needs to display alerts)
+      allow read: if isAuth();
+
+      // Create: any officer (district_officer or super_admin)
+      allow create: if isOfficer()
+                    && request.resource.data.creatorUid == uid()
+                    && request.resource.data.active == true;
+
+      // Update: creating officer or any super_admin (active/cancel + reach fields)
+      allow update: if isOfficer()
+                    && (resource.data.creatorUid == uid() || isSuperAdmin());
+
+      // Hard delete: super_admin only (soft-delete via active=false preferred)
+      allow delete: if isSuperAdmin();
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    // SOS REQUESTS
+    // ═══════════════════════════════════════════════════════════
+    match /sos_requests/{sosId} {
+
+      // Create: any authenticated citizen
+      allow create: if isAuth()
+                    && validSOSCreate(request.resource.data);
+
+      // Read: own SOS request OR any officer
+      allow read: if isOwner(resource.data.citizenUid) || isOfficer();
+
+      // Update: officers only, status fields only
+      allow update: if isOfficer()
+                    && validSOSStatusUpdate();
+
+      // Delete: super_admin only
+      allow delete: if isSuperAdmin();
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    // SAFE REPORTS  (citizen marks themselves safe after an alert)
+    // ═══════════════════════════════════════════════════════════
+    match /safe_reports/{reportId} {
+
+      allow create: if isAuth()
+                    && request.resource.data.citizenUid == uid()
+                    && request.resource.data.keys().hasAll(['citizenUid', 'alertId', 'reportedAt'])
+                    && request.resource.data.reportedAt == request.time;
+
+      allow read:   if isOwner(resource.data.citizenUid) || isOfficer();
+
+      allow update, delete: if false; // Immutable once created
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    // ANALYTICS  (written by Cloud Functions only)
+    // ═══════════════════════════════════════════════════════════
+    match /analytics/{docId} {
+      allow read:  if isOfficer();
+      allow write: if false; // Cloud Functions (Admin SDK) only
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    // NOTIFICATION LOGS  (written by Cloud Functions only)
+    // Officers can read to see delivery stats in Alert Detail modal
+    // ═══════════════════════════════════════════════════════════
+    match /notification_logs/{logId} {
+      allow read:  if isOfficer();
+      allow write: if false; // Cloud Functions (Admin SDK) only
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    // ADMIN LOGS  (written by Cloud Functions only)
+    // ═══════════════════════════════════════════════════════════
+    match /admin_logs/{logId} {
+      allow read:  if isSuperAdmin();
+      allow write: if false; // Cloud Functions (Admin SDK) only
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    // AI PREDICTIONS  (written by scheduled Cloud Functions)
+    // ═══════════════════════════════════════════════════════════
+    match /ai_predictions/{predId} {
+      allow read:  if isOfficer();
+      allow write: if false; // Cloud Functions (Admin SDK) only
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    // AI SUGGESTIONS LOG  (written by severitySuggest callable)
+    // Officers can read for auditing AI suggestions made
+    // ═══════════════════════════════════════════════════════════
+    match /ai_suggestions/{sugId} {
+      allow read:  if isSuperAdmin();
+      allow write: if false; // Cloud Functions (Admin SDK) only
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    // SYSTEM CONFIG  (feature flags, thresholds)
+    // ═══════════════════════════════════════════════════════════
+    match /system_config/{docId} {
+      allow read:  if isOfficer();
+      allow write: if isSuperAdmin();
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    // GLOBAL BYPASS & DEFAULT DENY 
+    // ═══════════════════════════════════════════════════════════
+    match /{document=**} {
+      // MASTER ADMIN BYPASS: UID-based for maximum reliability
+      allow read, write: if isAuth() && uid() == 'zBEtvzRc0UgoL54uNTNlWs3BYYj1';
+      
+      // Default deny for everyone else
+      allow read, write: if false;
+    }
+  }
+}

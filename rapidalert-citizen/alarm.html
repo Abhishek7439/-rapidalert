@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚨 EMERGENCY ALERT – RapidAlert</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #ef4444;
+            color: white;
+            font-family: -apple-system, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            animation: flashBg 0.5s infinite alternate;
+        }
+
+        @keyframes flashBg {
+            from {
+                background: #ef4444;
+            }
+
+            to {
+                background: #7f1d1d;
+            }
+        }
+
+        .icon {
+            font-size: 96px;
+            animation: pulse 0.5s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from {
+                transform: scale(1);
+            }
+
+            to {
+                transform: scale(1.2);
+            }
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 900;
+            margin: 16px 0 8px;
+            letter-spacing: 2px;
+        }
+
+        p {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+
+        .btn {
+            margin-top: 32px;
+            padding: 16px 48px;
+            background: white;
+            color: #ef4444;
+            border: none;
+            border-radius: 48px;
+            font-size: 20px;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .redirect-msg {
+            margin-top: 20px;
+            font-size: 14px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="icon">🚨</div>
+    <h1>EMERGENCY ALERT</h1>
+    <p id="msg">An emergency alert has been issued in your area.</p>
+
+    <!-- KEY: <audio autoplay loop> works when page opened by SW push event -->
+    <audio id="siren" autoplay loop>
+        <source src="./alarm.wav" type="audio/wav">
+    </audio>
+
+    <a class="btn" id="open-btn" href="./index.html">Open RapidAlert →</a>
+    <p class="redirect-msg" id="countdown">Opening app in <span id="secs">3</span>s…</p>
+
+    <script>
+        // Read params from URL
+        const params = new URLSearchParams(location.search);
+        const severity = params.get('alarm') || 'Emergency';
+        const alertId = params.get('alert') || '';
+
+        // Update severity color
+        if (severity === 'Evacuate') {
+            document.body.style.animationName = 'none';
+            document.body.style.background = '#7c3aed';
+        }
+
+        // Try Web Audio API too (belt + suspenders)
+        try {
+            const ctx = new AudioContext();
+            function playTone() {
+                if (ctx.state === 'suspended') ctx.resume();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(440, ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(880, ctx.currentTime + 0.8);
+                osc.frequency.linearRampToValueAtTime(440, ctx.currentTime + 1.6);
+                gain.gain.setValueAtTime(0, ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.7, ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.7, ctx.currentTime + 1.5);
+                gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.6);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 1.6);
+            }
+            playTone();
+            setInterval(playTone, 1700);
+        } catch (e) { /* audio element already handles it */ }
+
+        // Vibrate
+        if (navigator.vibrate) {
+            function vib() { navigator.vibrate([400, 100, 400, 100, 400]); }
+            vib();
+            setInterval(vib, 2000);
+        }
+
+        // Build redirect URL
+        const appUrl = './index.html'
+            + (alertId ? `?alert=${alertId}` : '')
+            + `${alertId ? '&' : '?'}alarm=${severity}`;
+
+        document.getElementById('open-btn').href = appUrl;
+
+        // Auto-redirect to main app after 3 seconds
+        let secs = 3;
+        const secsEl = document.getElementById('secs');
+        const timer = setInterval(() => {
+            secs--;
+            secsEl.textContent = secs;
+            if (secs <= 0) {
+                clearInterval(timer);
+                window.location.href = appUrl;
+            }
+        }, 1000);
+
+        // If user taps, go immediately
+        document.querySelector('.btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            clearInterval(timer);
+            window.location.href = appUrl;
+        });
+    </script>
+</body>
+
+</html>

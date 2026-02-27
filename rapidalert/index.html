@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <!-- DNS prefetch + preconnect for map CDNs (faster Leaflet load) -->
+    <link rel="preconnect" href="https://unpkg.com" crossorigin />
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+    <link rel="preconnect" href="https://a.basemaps.cartocdn.com" crossorigin />
+    <link rel="preconnect" href="https://b.basemaps.cartocdn.com" crossorigin />
+    <link rel="preconnect" href="https://c.basemaps.cartocdn.com" crossorigin />
+    <link rel="dns-prefetch" href="https://unpkg.com" />
+    <link rel="dns-prefetch" href="https://a.basemaps.cartocdn.com" />
+    <!-- Preload Leaflet JS so browser fetches in parallel -->
+    <link rel="preload" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" as="script" />
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js" as="script" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RapidAlert – Admin Control Panel</title>
+
+    <!-- 🚨 Tab favicon -->
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚨</text></svg>" />
+    <link rel="apple-touch-icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚨</text></svg>" />
+    <meta name="description"
+        content="RapidAlert Disaster Management & Emergency Alert System – Admin Control Panel for authorized government officials." />
+
+    <!-- ── Leaflet CSS ── -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- ── Leaflet Draw CSS ── -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <!-- ── App Styles ── -->
+    <link rel="stylesheet" href="/rapidalert/css/style.css?v=20260228c" />
+
+    <style>
+        /* Fallback font if Google Fonts can't load */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ══════════════════════════════════════════════
+     LOGIN PAGE
+══════════════════════════════════════════════ -->
+    <div id="login-page">
+        <div class="login-box">
+            <!-- Logo -->
+            <div class="login-logo">
+                <div class="logo-icon">🚨</div>
+                <h1>RapidAlert</h1>
+                <p>Disaster Management & Emergency Alert System</p>
+            </div>
+
+            <!-- Authorized notice -->
+            <div class="login-note">
+                🔒 <strong>Authorized Personnel Only</strong> – This panel is restricted to government officials.
+            </div>
+
+            <!-- Error -->
+            <div class="login-error" id="login-error"></div>
+
+            <!-- Form -->
+            <form id="login-form" autocomplete="on">
+                <div class="form-group">
+                    <label class="form-label" for="login-email">Admin Email</label>
+                    <input class="form-control" type="email" id="login-email" placeholder="you@yourdomain.gov"
+                        autocomplete="email" required />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="login-password">Password</label>
+                    <input class="form-control" type="password" id="login-password" placeholder="••••••••"
+                        autocomplete="current-password" required />
+                </div>
+                <button type="submit" class="btn btn-login" id="login-btn">Login →</button>
+            </form>
+
+
+        </div>
+    </div><!-- /#login-page -->
+
+
+    <!-- ══════════════════════════════════════════════
+     APP SHELL (hidden until logged in)
+══════════════════════════════════════════════ -->
+    <div id="app-shell" style="display:none; flex-direction:column;">
+
+        <!-- ── TOP NAVBAR ── -->
+        <nav id="navbar">
+            <div class="navbar-brand">
+                <div class="brand-icon">🚨</div>
+                Rapid<span><em>Alert</em></span>
+            </div>
+
+            <span
+                style="font-size:12px;color:var(--text-muted);padding:4px 10px;background:var(--bg-card);border-radius:4px;border:1px solid var(--border)">
+                Admin Control Panel
+            </span>
+
+            <div class="navbar-spacer"></div>
+
+
+
+            <!-- Admin info -->
+            <div class="navbar-admin">
+                <div class="avatar" id="nav-avatar">A</div>
+                <span id="nav-admin-name" style="font-size:13px;font-weight:500">Admin</span>
+            </div>
+
+            <!-- Logout -->
+            <button class="btn btn-secondary btn-sm" onclick="App.logout()" style="gap:5px">
+                ↩ Logout
+            </button>
+        </nav><!-- /#navbar -->
+
+        <!-- ── BODY (sidebar + main content) ── -->
+        <div id="body-wrapper">
+
+            <!-- ── LEFT SIDEBAR ── -->
+            <aside id="sidebar">
+                <div class="sidebar-section-label">Navigation</div>
+
+                <div class="sidebar-item" data-page="dashboard" onclick="App.navigate('dashboard')">
+                    <span class="si-icon">📊</span> Dashboard
+                </div>
+                <div class="sidebar-item" data-page="create-alert" onclick="App.navigate('create-alert')"
+                    style="margin-bottom:4px">
+                    <span class="si-icon">🚨</span> Create Alert
+                </div>
+
+                <div class="sidebar-divider"></div>
+                <div class="sidebar-section-label">Alerts</div>
+
+                <div class="sidebar-item" data-page="active-alerts" onclick="App.navigate('active-alerts')">
+                    <span class="si-icon">📡</span> Active Alerts
+                </div>
+                <div class="sidebar-item" data-page="sos-requests" onclick="App.navigate('sos-requests')">
+                    <span class="si-icon">🆘</span> SOS Requests
+                </div>
+                <div class="sidebar-item" data-page="alert-history" onclick="App.navigate('alert-history')">
+                    <span class="si-icon">📋</span> Alert History
+                </div>
+
+                <div class="sidebar-divider"></div>
+                <div class="sidebar-section-label">System</div>
+
+                <div class="sidebar-item" data-page="system-status" onclick="App.navigate('system-status')">
+                    <span class="si-icon">🖥️</span> System Status
+                </div>
+
+                <div class="sidebar-spacer"></div>
+                <div class="sidebar-footer">
+                    RapidAlert v1.0 · NDMA India
+                </div>
+            </aside><!-- /#sidebar -->
+
+            <!-- ── MAIN CONTENT ── -->
+            <main id="main-content">
+                <!-- Pages render here dynamically -->
+            </main>
+
+        </div><!-- /#body-wrapper -->
+    </div><!-- /#app-shell -->
+
+
+    <!-- ── Toast Container ── -->
+    <div id="toast-container"></div>
+
+
+    <!-- ══════════════════════════════════════════════
+     SCRIPTS – Load order is critical!
+     • firebase-env.js    → sets window.RAPIDALERT_CONFIG (sync)
+     • Leaflet            → sync CDN (needed by page renderers)
+     • firebase-init.js   → type=module: imports Firebase SDK,
+                            initializes app, sets window.FB
+     • app.js             → type=module: sets window.App
+     • auth.js            → type=module: sets up onAuthStateChanged,
+                            calls App.login() + App.startListeners()
+     • ui.js, page files  → regular scripts, deferred=false but
+                            they use window.FB/window.App so must
+                            run AFTER modules → wrapped in boot
+══════════════════════════════════════════════ -->
+
+    <!-- Firebase config — fill in before deploying -->
+    <script src="/firebase-env.js"></script>
+
+    <!-- Leaflet.js (sync — needed by page renderers) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet Draw Plugin -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <!-- Leaflet Heatmap Plugin -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+
+    <!-- Firebase Modular SDK init (ES Module) builds window.FB -->
+    <script type="module" src="/rapidalert/js/firebase-init.js"></script>
+
+    <!-- App state + router (ES Module) builds window.App -->
+    <script type="module" src="/rapidalert/js/app.js?v=20260228g"></script>
+
+    <!-- Auth (ES Module) — onAuthStateChanged + login form handler -->
+    <script type="module" src="/rapidalert/js/auth.js?v=perm_fix_v1"></script>
+
+    <!-- Regular scripts: Geocoder + UI utilities -->
+    <!-- These run synchronously after the page loads but window.FB/App -->
+    <!-- will be available because modules execute first per spec.      -->
+    <script src="/rapidalert/js/geocoder.js" defer></script>
+    <script src="/rapidalert/js/ui.js" defer></script>
+
+    <!-- Page renderers (regular scripts — use window.FB + window.App) -->
+    <script src="/rapidalert/js/ai-engine.js?v=20260228c" defer></script>
+  <script src="/rapidalert/js/dashboard.js?v=20260228h" defer></script>
+    <script src="/rapidalert/js/create-alert.js?v=20260228b" defer></script>
+    <script src="/rapidalert/js/active-alerts.js?v=20260228f" defer></script>
+    <script src="/rapidalert/js/sos-requests.js?v=20260228f" defer></script>
+    <script src="/rapidalert/js/alert-history.js?v=20260228f" defer></script>
+    <script src="/rapidalert/js/system-status.js?v=20260228f" defer></script>
+
+    <!-- Boot: call initAdminLoginPage after all scripts are ready -->
+    <!-- Modules set window.App + window.Auth; defer scripts also done -->
+    <script type="module">
+        // All module imports above are guaranteed to have run before this.
+        // initAdminLoginPage is exposed by auth.js on window.
+        // It wires the login form submit handler.
+        if (typeof initAdminLoginPage === 'function') {
+            initAdminLoginPage();
+        }
+        // If initAdminLoginPage hasn't loaded yet (race on first paint),
+        // auth.js onAuthStateChanged will handle session restoration.
+    </script>
+
+</body>
+
+</html>

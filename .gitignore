@@ -1,0 +1,74 @@
+# ── Environment / Firebase credentials ───────────────────────────────────────
+# firebase-env.js contains actual Firebase API keys.
+# In production, keys are set in Firebase Hosting's auto-config (/__/firebase/)
+# or via environment variables in CI/CD. Never commit real keys to git.
+firebase-env.js
+
+# Node dependencies
+node_modules/
+functions/node_modules/
+
+# Firebase cache and debug logs
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+
+# OS generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V7
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE/editor directories
+.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Service account keys (never commit)
+service-account.json
+serviceAccountKey.json
+*.key
+*.pem
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+
+# Build output
+dist/
+build/
+
+# Log files
+*.log
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+deploy_output.log
+emulator_*.log
+hs_err_pid*.log
+
+# Temp / test scripts
+ci_login.txt
+push-sender.js
+phase1_test.js
+phase2_test.js
+phase1_execution_report.md
+phase1_validation_report.md
+phase2_validation_report.md
+/tmp/
+
+# Firebase emulator data
+.cache/
+
+# JVM crash logs
+hs_err_pid*.log

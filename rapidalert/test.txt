@@ -1,0 +1,1 @@
+hosting diagnostic: if you can see this, hosting is serving from the root.

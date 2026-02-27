@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "rapidalert-prod",
+    "staging":  "rapidalert-staging"
+  },
+  "targets": {
+    "rapidalert-prod": {
+      "hosting": {
+        "admin":   ["rapidalert-prod"],
+        "citizen": ["rapidalert-prod"]
+      }
+    }
+  },
+  "etags": {}
+}

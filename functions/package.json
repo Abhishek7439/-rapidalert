@@ -1,0 +1,33 @@
+{
+    "name": "rapidalert-functions",
+    "description": "RapidAlert – Firebase Cloud Functions (Node.js 20)",
+    "scripts": {
+        "serve": "firebase emulators:start --only auth,firestore,functions,hosting",
+        "shell": "firebase functions:shell",
+        "start": "npm run shell",
+        "deploy": "firebase deploy --only functions",
+        "logs": "firebase functions:log",
+        "lint": "eslint --ext .js .",
+        "lint:fix": "eslint --ext .js . --fix"
+    },
+    "engines": {
+        "node": "18"
+    },
+    "main": "index.js",
+    "dependencies": {
+        "@firebase/rules-unit-testing": "^5.0.0",
+        "@turf/boolean-point-in-polygon": "^6.5.0",
+        "@turf/helpers": "^6.5.0",
+        "firebase": "^12.9.0",
+        "firebase-admin": "^12.1.0",
+        "firebase-functions": "^5.0.1",
+        "geofire-common": "^6.0.0",
+        "web-push": "^3.6.7"
+    },
+    "devDependencies": {
+        "eslint": "^8.57.0",
+        "eslint-config-google": "^0.14.0",
+        "firebase-functions-test": "^3.2.0"
+    },
+    "private": true
+}

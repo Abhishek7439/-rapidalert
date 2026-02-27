@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "start": "node scripts/start-dev.js",
+    "dev": "firebase emulators:start --project rapidalert-prod",
+    "setup-admin": "node scripts/setup-emulator-admin.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.7.0",
+    "puppeteer": "^24.37.5"
+  }
+}

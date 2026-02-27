@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>WCEM Reach Test</title>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.1/firebase-app.js";
+        import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/10.12.1/firebase-functions.js";
+        import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.1/firebase-auth.js";
+
+        const firebaseConfig = { projectId: "rapidalert" };
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        connectAuthEmulator(auth, "http://localhost:9099");
+        const functions = getFunctions(app, 'asia-south1');
+        connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+
+        async function testReach() {
+            try {
+                await signInWithEmailAndPassword(auth, "admin@rapidalert.gov", "admin123");
+                document.getElementById('status').innerText = 'Logged in. Calling function...';
+
+                const calcReach = httpsCallable(functions, 'calculateReach');
+                // WCEM Nagpur coordinates: 20.9903, 79.0240. Radius 5km.
+                const result = await calcReach({
+                    radius: 5,
+                    centerLat: 20.9903,
+                    centerLng: 79.0240,
+                    district: 'Nagpur'
+                });
+
+                document.getElementById('status').innerText = 'Success!';
+                document.getElementById('result').innerText = JSON.stringify(result.data, null, 2);
+            } catch (err) {
+                document.getElementById('status').innerText = 'Error: ' + err.message;
+                console.error(err);
+            }
+        }
+
+        testReach();
+    </script>
+</head>
+
+<body>
+    <h2>WCEM Reach Test</h2>
+    <div id="status">Initializing...</div>
+    <pre id="result"></pre>
+</body>
+
+</html>

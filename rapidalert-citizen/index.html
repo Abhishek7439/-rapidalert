@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="RapidAlert" />
+  <meta name="theme-color" content="#e84141" />
+  <meta name="description"
+    content="RapidAlert – Citizen App. Receive instant disaster alerts with loud alarms and evacuation instructions." />
+
+  <title>RapidAlert – Citizen</title>
+
+  <!-- 🚨 Tab favicon -->
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚨</text></svg>" />
+  <link rel="apple-touch-icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚨</text></svg>" />
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="./manifest.json" />
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon" sizes="192x192" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="512x512" href="./icons/icon-512.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./icons/icon-72.png" />
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="./css/app.css" />
+
+  <!-- Leaflet Map (loaded eagerly so map tiles render correctly) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+
+  <!-- Critical inline CSS for loading screen — visible immediately, no FOUC -->
+  <style>
+    #app-loading {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      background: #090b10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      transition: opacity 0.4s ease;
+    }
+
+    #app-loading.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .boot-siren {
+      font-size: 64px;
+      animation: bootPulse 1s infinite;
+    }
+
+    @keyframes bootPulse {
+
+      0%,
+      100% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.12);
+      }
+    }
+
+    .boot-title {
+      font-family: -apple-system, sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+      color: #e84141;
+      letter-spacing: -0.5px;
+    }
+
+    .boot-sub {
+      font-family: -apple-system, sans-serif;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .boot-bar {
+      width: 180px;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .boot-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #e84141, #f87171);
+      border-radius: 2px;
+      transition: width 0.4s ease;
+    }
+
+    .boot-status {
+      font-family: -apple-system, sans-serif;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.3);
+      min-height: 16px;
+    }
+
+    #error-boundary {
+      position: fixed;
+      inset: 0;
+      z-index: 99998;
+      background: #090b10;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      text-align: center;
+      gap: 16px;
+    }
+
+    #error-boundary.visible {
+      display: flex;
+    }
+
+    .err-icon {
+      font-size: 52px;
+    }
+
+    .err-title {
+      font-family: -apple-system, sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #f87171;
+    }
+
+    .err-msg {
+      font-family: -apple-system, sans-serif;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.5);
+      line-height: 1.6;
+    }
+
+    .err-retry {
+      margin-top: 8px;
+      padding: 12px 28px;
+      background: #e84141;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── Loading Screen (shown immediately, removed after auth resolves) ── -->
+  <div id="app-loading">
+    <div class="boot-siren">🚨</div>
+    <div class="boot-title">RapidAlert</div>
+    <div class="boot-sub">Citizen Emergency App</div>
+    <div class="boot-bar">
+      <div class="boot-fill" id="boot-fill"></div>
+    </div>
+    <div class="boot-status" id="boot-status">Initializing…</div>
+  </div>
+
+  <!-- ── Error Boundary (shown on fatal error) ── -->
+  <div id="error-boundary">
+    <div class="err-icon">⚠️</div>
+    <div class="err-title">Something went wrong</div>
+    <div class="err-msg" id="err-msg">RapidAlert failed to start. Clearing cache and retrying…</div>
+    <button class="err-retry" id="err-retry-btn" onclick="hardReset()">🔄 Fix & Retry</button>
+  </div>
+  <script>
+    // Auto-clear SW cache when error boundary is shown (handles stale cache)
+    function hardReset() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          var promises = regs.map(function (r) { return r.unregister(); });
+          return Promise.all(promises);
+        }).then(function () {
+          return caches.keys();
+        }).then(function (keys) {
+          return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+        }).finally(function () {
+          window.location.reload(true);
+        });
+      } else {
+        window.location.reload(true);
+      }
+    }
+    // Auto-trigger SW clear when error boundary becomes visible
+    var _errObserver = new MutationObserver(function (muts) {
+      muts.forEach(function (m) {
+        m.addedNodes.forEach(function (n) {
+          if (n.id === 'error-boundary' || (n.classList && n.classList.contains('visible'))) {
+            setTimeout(hardReset, 1500);
+          }
+        });
+      });
+    });
+    _errObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  </script>
+
+
+  <!-- App Root (pages render here) -->
+  <div id="app-root"></div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Bottom Tab Bar — hidden until auth resolves -->
+  <div class="tab-bar" id="tab-bar" style="display:none">
+    <div class="tab-item active" data-tab="home" onclick="App.goHome(); setTab('home')">
+      <span class="ti">&#x1F3E0;</span>
+      <span>Home</span>
+    </div>
+    <div class="tab-item" data-tab="sos" onclick="App.showSOSView(); setTab('sos')">
+      <span class="ti">&#x1F198;</span>
+      <span>SOS</span>
+    </div>
+    <div class="tab-item" data-tab="history" onclick="showHistory(); setTab('history')">
+      <span class="ti">&#x1F4CB;</span>
+      <span>History</span>
+    </div>
+    <div class="tab-item" data-tab="settings" onclick="showSettings(); setTab('settings')">
+      <span class="ti">&#x2699;&#xFE0F;</span>
+      <span>Settings</span>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       SCRIPTS — Load order:
+       1. firebase-env.js       sync: sets window.RAPIDALERT_CONFIG
+       2. alarm.js              defer: Web Audio
+       3. firebase-init.js      type=module: inits Firebase, sets window.FB
+       4. auth.js               type=module: Phone Auth, exposes window.Auth
+       5. fcm.js                type=module: FCM token + foreground push
+       6. geo.js                type=module: geolocation to Firestore
+       7. app.js                type=module: Firestore onSnapshot, sets window.App
+       8. boot module           type=module: run after all of the above
+  ============================================================ -->
+
+  <!-- Firebase config (fill in before deploying) -->
+  <script src="../../firebase-env.js"></script>
+
+  <!-- Alarm System (Web Audio API) -->
+  <script src="./js/alarm.js?v=20260227c" defer></script>
+
+  <!-- ── Firebase Modular SDK (ES Modules) ── -->
+  <script type="module" src="./js/firebase-init.js?v=20260227c"></script>
+  <script type="module" src="./js/auth.js?v=20260227c"></script>
+  <script type="module" src="./js/fcm.js?v=20260227h"></script>
+  <script type="module" src="./js/geo.js?v=20260227c"></script>
+  <script type="module" src="./js/app.js?v=20260227h"></script>
+
+
+  <!-- Boot sequence — runs after ALL module scripts above per ES module spec -->
+  <script type="module">
+    /* ── Boot Progress Helper ───────────────────────────────────── */
+    const loadingEl = document.getElementById('app-loading');
+    const fillEl = document.getElementById('boot-fill');
+    const statusEl = document.getElementById('boot-status');
+    const errBoundary = document.getElementById('error-boundary');
+    const errMsgEl = document.getElementById('err-msg');
+
+    function setProgress(pct, msg) {
+      if (fillEl) fillEl.style.width = pct + '%';
+      if (statusEl) statusEl.textContent = msg || '';
+    }
+
+    function showError(msg) {
+      if (errMsgEl) errMsgEl.textContent = msg + ' — Auto-clearing cache…';
+      if (errBoundary) errBoundary.classList.add('visible');
+      if (loadingEl) { loadingEl.classList.add('hidden'); setTimeout(() => loadingEl.remove(), 500); }
+      // Auto-clear stale SW cache after 2s and reload with fresh files
+      setTimeout(() => { if (window.hardReset) hardReset(); }, 2000);
+    }
+
+    function hideSplash() {
+      if (loadingEl) {
+        loadingEl.classList.add('hidden');
+        setTimeout(() => { loadingEl?.remove(); }, 500);
+      }
+    }
+
+    /* ── Wait for a global to appear (with timeout) ─────────────── */
+    function waitForGlobal(name, maxMs = 8000, intervalMs = 50) {
+      return new Promise((resolve, reject) => {
+        if (window[name]) return resolve(window[name]);
+        const start = Date.now();
+        const id = setInterval(() => {
+          if (window[name]) { clearInterval(id); return resolve(window[name]); }
+          if (Date.now() - start > maxMs) {
+            clearInterval(id);
+            reject(new Error(`${name} not available after ${maxMs}ms`));
+          }
+        }, intervalMs);
+      });
+    }
+
+    /* ── Main Boot ──────────────────────────────────────────────── */
+    async function boot() {
+      try {
+        setProgress(10, 'Loading Firebase…');
+
+        // Wait for all modules to expose their globals
+        await waitForGlobal('FB', 8000);
+        setProgress(30, 'Connecting to Firebase…');
+
+        await waitForGlobal('Auth', 8000);
+        setProgress(50, 'Checking login status…');
+
+        await waitForGlobal('App', 8000);
+        setProgress(60, 'Waiting for authentication…');
+
+        // checkAuthState registers the callback — fires once immediately
+        const profile = await new Promise((resolve) => {
+          Auth.checkAuthState((p) => resolve(p));
+        });
+
+        setProgress(80, profile ? 'Loading your data…' : 'Showing login…');
+
+        if (profile) {
+          // Already logged in — boot straight into app
+          document.getElementById('tab-bar').style.display = 'flex';
+          App.setCitizenProfile(profile);
+          await App.init();
+        } else {
+          // Not logged in — show Phone OTP auth screen
+          document.getElementById('tab-bar').style.display = 'none';
+          Auth.renderAuthScreen(async (newProfile) => {
+            document.getElementById('tab-bar').style.display = 'flex';
+            App.setCitizenProfile(newProfile);
+            await App.init();
+            showToast('Welcome, ' + (newProfile.name || 'Citizen') + '!', 'success', 4000);
+          });
+        }
+
+        setProgress(100, 'Ready!');
+        setTimeout(hideSplash, 400);
+
+      } catch (err) {
+        console.error('[Boot] Fatal error:', err);
+        showError(err.message || 'App failed to start. Check internet connection.');
+      }
+    }
+
+    // Inject Firebase config into service worker for FCM background push
+    async function injectSWConfig() {
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        if (reg.active && window.RAPIDALERT_CONFIG?.firebase) {
+          reg.active.postMessage({
+            type: 'SET_FIREBASE_CONFIG',
+            config: window.RAPIDALERT_CONFIG.firebase,
+          });
+        }
+      } catch (e) {
+        console.warn('[Boot] Could not inject SW config:', e.message);
+      }
+    }
+
+    // Start boot when DOM + window.load fires
+    window.addEventListener('load', () => {
+      boot();
+      injectSWConfig();
+    });
+
+    /* ── Tab Navigation ─────────────────────────────────────────── */
+    function setTab(tab) {
+      document.querySelectorAll('.tab-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.tab === tab);
+      });
+    }
+
+    /* ── History Tab ─────────────────────────────────────────────── */
+    function showHistory() {
+      if (!window.App) return;
+      const root = document.getElementById('app-root');
+      if (!root) return;
+      App.state.currentView = 'history';
+      const alerts = App.state.alertHistory || [];
+      const TYPE_ICONS = {
+        Earthquake: '&#x1F30D;', Tsunami: '&#x1F30A;',
+        Flood: '&#x1F4A7;', Fire: '&#x1F525;', Cyclone: '&#x1F300;', Other: '&#x26A0;',
+      };
+      const SEV = {
+        Info: '#3b82f6', Warning: '#f59e0b', Emergency: '#ef4444', Evacuate: '#7c3aed',
+      };
+
+      root.innerHTML =
+        '<div class="app-header">' +
+        '<button class="back-btn" style="color:#fff" onclick="App.goHome();setTab(\'home\')">&#x2039; Back</button>' +
+        '<div class="header-brand">Alert History</div>' +
+        '</div>' +
+        '<div style="padding:12px">' +
+        (alerts.length === 0
+          ? '<div class="empty-card"><div class="empty-icon">&#x1F4CB;</div><div class="empty-title">No History</div><div class="empty-sub">Past alerts appear here when alerts are cancelled or resolved.</div></div>'
+          : alerts.map(a => {
+            const c = SEV[a.severity] || '#3b82f6';
+            const ti = TYPE_ICONS[a.type] || '&#x26A0;';
+            const ts = a.timeSent && a.timeSent.toDate ? a.timeSent.toDate() : new Date(a.timeSent || Date.now());
+            const dt = ts.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+            return '<div class="alert-card" style="border-color:' + c + ';cursor:default">' +
+              '<div class="ac-header">' +
+              '<div class="ac-type"><span class="ac-icon">' + ti + '</span>' +
+              '<div><div class="ac-title">' + a.type + (a.isDrill ? ' <span class="drill-tag">DRILL</span>' : '') + '</div>' +
+              '<div class="ac-area">&#x1F4CD; ' + (a.area || '') + '</div></div></div>' +
+              '<div class="ac-sev" style="background:' + c + '20;color:' + c + ';border:1px solid ' + c + '50">' + (a.severity || '') + '</div>' +
+              '</div>' +
+              '<div class="ac-msg">' + (a.message || '').substring(0, 100) + '</div>' +
+              '<div class="ac-footer"><div class="ac-time">' + dt + '</div></div>' +
+              '</div>';
+          }).join('')
+        ) +
+        '</div>';
+    }
+
+    /* ── Settings Tab ─────────────────────────────────────────────── */
+    function showSettings() {
+      if (!window.App) return;
+      // Set internal state so back-buttons work
+      App.state.currentView = 'settings';
+      const root = document.getElementById('app-root');
+      if (!root) return;
+
+      const profile = App.state.citizenProfile || {};
+      const swStatus = App.state.swReady ? '✅ Active' : '⚠️ Inactive';
+      const notifStatus = App.state.notifPermission === 'granted'
+        ? '<span style="color:#22c55e">✅ Enabled</span>'
+        : '<span style="color:#ef4444">❌ Disabled</span>';
+
+      root.innerHTML = `
+        <div class="app-header">
+          <button class="back-btn" style="color:#fff" onclick="App.goHome();setTab('home')">‹ Back</button>
+          <div class="header-brand">⚙️ Settings</div>
+        </div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:14px;padding-bottom:80px">
+
+          <div class="settings-card">
+            <div class="settings-label">👤 Your Profile</div>
+            <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:8px">Logged in as</div>
+            <div style="font-size:15px;font-weight:700;color:#fff">${profile.phone || profile.name || 'Citizen'}</div>
+            ${profile.name ? `<div style="font-size:13px;color:rgba(255,255,255,0.6);margin-top:2px">${profile.name}</div>` : ''}
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-label">✏️ Display Name</div>
+            <input type="text" class="sos-input" id="set-name"
+              value="${profile.name || ''}" placeholder="Enter your name"
+              style="margin-top:8px">
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-label">🔔 Notifications</div>
+            <div class="settings-row">
+              <span>Push Notifications</span>
+              ${notifStatus}
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-label">📍 Location</div>
+            <div class="settings-row">
+              <span>GPS Tracking</span>
+              <span style="color:#22c55e">✅ Active</span>
+            </div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:4px">
+              Location used only for zone-matched alert delivery
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-label">🔧 System</div>
+            <div class="settings-row"><span>User ID</span><span class="mono" style="font-size:11px">${(profile.uid || '—').slice(0, 14)}…</span></div>
+            <div class="settings-row"><span>Service Worker</span><span>${swStatus}</span></div>
+          </div>
+
+          <button class="daction-btn safe" id="save-settings-btn"
+            style="background:rgba(34,197,94,0.12);border-color:rgba(34,197,94,0.4);color:#22c55e">
+            💾 Save Name
+          </button>
+
+          <button class="daction-btn" id="install-pwa-btn"
+            style="background:rgba(59,130,246,0.1);border-color:rgba(59,130,246,0.3);color:#3b82f6">
+            📲 Install App on Home Screen
+          </button>
+
+          <button class="daction-btn" id="logout-settings-btn"
+            style="background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.4);color:#ef4444;font-size:15px;font-weight:700;padding:16px">
+            🔓 Logout
+          </button>
+
+          <div style="text-align:center;font-size:11px;color:rgba(255,255,255,0.2);margin-top:4px">
+            RapidAlert v2.0 · Emergency Alert System
+          </div>
+        </div>`;
+
+      // Wire up buttons
+      document.getElementById('save-settings-btn')?.addEventListener('click', async () => {
+        const name = document.getElementById('set-name')?.value.trim();
+        if (!name) return;
+        App.state.citizenProfile = { ...App.state.citizenProfile, name };
+        try {
+          const { updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.12.1/firebase-firestore.js');
+          const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.12.1/firebase-auth.js');
+          const uid = getAuth().currentUser?.uid;
+          if (uid) await updateDoc(doc(window.FB.db, 'users', uid), { name });
+          showToast('✅ Name saved!', 'success');
+        } catch (e) { showToast('Failed to save: ' + e.message, 'error'); }
+      });
+
+      document.getElementById('install-pwa-btn')?.addEventListener('click', () => {
+        if (window.triggerInstall) window.triggerInstall();
+        else showToast('Tap browser menu → "Add to Home Screen"', 'info', 5000);
+      });
+
+      document.getElementById('logout-settings-btn')?.addEventListener('click', async () => {
+        if (confirm('Are you sure you want to logout?')) {
+          if (App.state._unsubAlerts) { App.state._unsubAlerts(); }
+          if (App.state._unsubHistory) { App.state._unsubHistory(); }
+          if (window.Auth) await Auth.logout();
+          window.location.reload();
+        }
+      });
+    }
+
+
+    /* ── Global toast helper ──────────────────────────────────────── */
+    function showToast(msg, type, dur) {
+      if (window.App && App.showToast) {
+        App.showToast(msg, type || 'info', dur || 3500);
+        return;
+      }
+      const c = document.getElementById('toast-container');
+      if (!c) return;
+      const icons = { success: '&#x2705;', error: '&#x1F198;', warning: '&#x26A0;&#xFE0F;', info: '&#x2139;&#xFE0F;' };
+      const t = document.createElement('div');
+      t.className = 'app-toast ' + (type || 'info');
+      t.innerHTML = '<span>' + (icons[type] || icons.info) + '</span><span>' + msg + '</span>';
+      c.appendChild(t);
+      setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, dur || 3500);
+    }
+
+    // Expose to global (needed by onclick attrs in tab bar and rendered HTML)
+    window.showToast = showToast;
+    window.setTab = setTab;
+    window.showHistory = showHistory;
+    window.showSettings = showSettings;
+
+    /* ── PWA Install prompt ───────────────────────────────────────── */
+    let deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      setTimeout(() => showToast('📲 Install RapidAlert on your home screen!', 'info', 8000), 4000);
+      // Expose trigger for settings page
+      window.triggerInstall = async () => {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        const res = await deferredInstallPrompt.userChoice;
+        if (res.outcome === 'accepted') { showToast('✅ RapidAlert installed!', 'success'); }
+        deferredInstallPrompt = null;
+      };
+    });
+
+    window.addEventListener('appinstalled', () => {
+      showToast('✅ RapidAlert installed successfully!', 'success', 5000);
+      deferredInstallPrompt = null;
+    });
+  </script>
+
+
+</body>
+
+</html>

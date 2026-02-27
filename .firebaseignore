@@ -1,0 +1,60 @@
+# Firebase deploy ignore — files NOT uploaded to Firebase Hosting
+
+# Sensitive config (credentials never go to hosting)
+firebase-env.js
+service-account.json
+serviceAccountKey.json
+*.key
+*.pem
+.env
+.env.*
+
+# Firebase project files (not static assets)
+firebase.json
+.firebaserc
+firestore.rules
+firestore.indexes.json
+storage.rules
+.firebaseignore
+.gitignore
+
+# Cloud Functions source (deployed separately)
+functions/
+
+# Node modules
+**/node_modules/
+
+# Firebase internal cache
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+
+# Scripts
+scripts/
+
+# Documentation
+*.md
+
+# Tests
+tests/
+__tests__/
+*.test.js
+*.spec.js
+
+# OS generated
+.DS_Store
+Thumbs.db
+._*
+
+# IDE
+.vscode/
+.idea/
+
+# Legacy files (Smart Community app — not part of RapidAlert)
+login.html
+register.html
+dashboard.html
+admin.html
+js/
+css/

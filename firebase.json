@@ -1,0 +1,171 @@
+{
+    "hosting": {
+        "public": ".",
+        "ignore": [
+            "firebase.json",
+            "firestore.rules",
+            "firestore.indexes.json",
+            "storage.rules",
+            ".firebaserc",
+            ".firebaseignore",
+            ".gitignore",
+            "**/.*",
+            "**/node_modules/**",
+            "functions/**",
+            "scripts/**",
+            "*.md"
+        ],
+        "rewrites": [
+            {
+                "source": "/",
+                "destination": "/rapidalert/index.html"
+            },
+            {
+                "source": "/rapidalert-citizen/sw.js",
+                "destination": "/rapidalert-citizen/sw.js"
+            },
+            {
+                "source": "/rapidalert-citizen/!(*.js|*.css|*.html|*.png|*.jpg|*.ico|*.json|*.woff2|*.woff|*.ttf|*.webp)",
+                "destination": "/rapidalert-citizen/index.html"
+            },
+            {
+                "source": "/rapidalert/!(*.js|*.css|*.html|*.png|*.jpg|*.ico|*.json|*.woff2|*.woff|*.ttf|*.webp)",
+                "destination": "/rapidalert/index.html"
+            }
+        ],
+        "headers": [
+            {
+                "source": "/rapidalert-citizen/sw.js",
+                "headers": [
+                    {
+                        "key": "Cache-Control",
+                        "value": "no-cache, no-store, must-revalidate"
+                    },
+                    {
+                        "key": "Service-Worker-Allowed",
+                        "value": "/"
+                    }
+                ]
+            },
+            {
+                "source": "/rapidalert-citizen/manifest.json",
+                "headers": [
+                    {
+                        "key": "Cache-Control",
+                        "value": "no-cache"
+                    },
+                    {
+                        "key": "Content-Type",
+                        "value": "application/manifest+json"
+                    }
+                ]
+            },
+            {
+                "source": "**/*.@(js|css)",
+                "headers": [
+                    {
+                        "key": "Cache-Control",
+                        "value": "no-cache, no-store, must-revalidate"
+                    }
+                ]
+            },
+            {
+                "source": "**/*.html",
+                "headers": [
+                    {
+                        "key": "Cache-Control",
+                        "value": "no-cache"
+                    }
+                ]
+            },
+            {
+                "source": "**",
+                "headers": [
+                    {
+                        "key": "X-Content-Type-Options",
+                        "value": "nosniff"
+                    },
+                    {
+                        "key": "X-Frame-Options",
+                        "value": "DENY"
+                    },
+                    {
+                        "key": "X-XSS-Protection",
+                        "value": "1; mode=block"
+                    },
+                    {
+                        "key": "Referrer-Policy",
+                        "value": "strict-origin-when-cross-origin"
+                    },
+                    {
+                        "key": "Permissions-Policy",
+                        "value": "geolocation=(self), notifications=(self), camera=()"
+                    },
+                    {
+                        "key": "Strict-Transport-Security",
+                        "value": "max-age=63072000; includeSubDomains; preload"
+                    },
+                    {
+                        "key": "Cross-Origin-Opener-Policy",
+                        "value": "same-origin-allow-popups"
+                    },
+                    {
+                        "key": "Cross-Origin-Resource-Policy",
+                        "value": "same-origin"
+                    }
+                ]
+            }
+        ]
+    },
+    "firestore": {
+        "rules": "firestore.rules",
+        "indexes": "firestore.indexes.json"
+    },
+    "functions": [
+        {
+            "source": "functions",
+            "codebase": "rapidalert",
+            "ignore": [
+                "node_modules",
+                ".git",
+                "firebase-debug.log",
+                "firebase-debug.*.log",
+                "*.test.js"
+            ],
+            "predeploy": [
+                "npm --prefix functions install --if-present"
+            ]
+        }
+    ],
+    "storage": {
+        "rules": "storage.rules"
+    },
+    "emulators": {
+        "auth": {
+            "host": "0.0.0.0",
+            "port": 9099
+        },
+        "firestore": {
+            "host": "0.0.0.0",
+            "port": 8080
+        },
+        "functions": {
+            "host": "0.0.0.0",
+            "port": 5001
+        },
+        "hosting": {
+            "host": "0.0.0.0",
+            "port": 5000
+        },
+        "storage": {
+            "host": "0.0.0.0",
+            "port": 9199
+        },
+        "ui": {
+            "enabled": true,
+            "host": "127.0.0.1",
+            "port": 4000
+        },
+        "singleProjectMode": false
+    }
+}
