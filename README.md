@@ -15,6 +15,37 @@
 
 ---
 
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="screenshots/dashboard.png" alt="AI Command Dashboard" width="100%"/>
+      <br/><b>🖥️ AI Command Dashboard</b>
+      <br/><sub>Live stats, alerts feed, SOS heatmap</sub>
+    </td>
+    <td align="center">
+      <img src="screenshots/create-alert.png" alt="Create Alert" width="100%"/>
+      <br/><b>🗺️ Create Alert + Zone Drawing</b>
+      <br/><sub>Draw zones on map, AI severity suggestion</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="screenshots/ai-risk.png" alt="AI Risk Intelligence" width="100%"/>
+      <br/><b>🤖 AI Risk Intelligence Engine</b>
+      <br/><sub>District risk scores, spike detection, trend analysis</sub>
+    </td>
+    <td align="center">
+      <img src="screenshots/citizen-pwa.png" alt="Citizen PWA" width="100%"/>
+      <br/><b>📱 Citizen PWA</b>
+      <br/><sub>Push alerts, SOS submission, safe reporting</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## 📋 Table of Contents
 
 - [Overview](#-overview)
