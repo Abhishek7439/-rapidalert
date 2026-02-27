@@ -292,7 +292,7 @@ users/{userId}
 
 ---
 
-## 🎯 AI Features Showcase (For Judges)
+## 🎯 AI Features Showcase
 
 > **No external AI APIs were used. All intelligence is computed client-side in real-time.**
 
