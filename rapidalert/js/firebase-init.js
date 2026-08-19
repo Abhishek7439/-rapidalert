@@ -50,7 +50,24 @@ import {
     logEvent,
 } from 'https://www.gstatic.com/firebasejs/10.12.1/firebase-analytics.js';
 
-// ── Guard: validate config before init ───────────────────────────────────────
+if (!window.RAPIDALERT_CONFIG) {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    window.RAPIDALERT_CONFIG = {
+        firebase: {
+            apiKey: "AIzaSyAnG1USSC94DNxlnzeufs3PpTNzXhcoqHM",
+            authDomain: "smart-community-8fd9a.firebaseapp.com",
+            projectId: "smart-community-8fd9a",
+            storageBucket: "smart-community-8fd9a.firebasestorage.app",
+            messagingSenderId: "864478830317",
+            appId: "1:864478830317:web:f6eb2213f8c222363b36e4",
+        },
+        vapidKey: "YOUR_VAPID_KEY",
+        otpServerUrl: isLocal ? "http://localhost:3001" : "https://asia-south1-smart-community-8fd9a.cloudfunctions.net",
+        authMode: "twilio",
+        env: isLocal ? "development" : "production"
+    };
+}
+
 const cfg = window.RAPIDALERT_CONFIG;
 if (!cfg || !cfg.firebase || !cfg.firebase.apiKey) {
     const errEl = document.getElementById('login-error');

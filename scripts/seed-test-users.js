@@ -5,7 +5,7 @@ process.env.FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:9099';
 const admin = require('firebase-admin');
 
 admin.initializeApp({
-    projectId: 'rapidalert-prod',
+    projectId: 'smart-community-8fd9a',
 });
 
 const db = admin.firestore();

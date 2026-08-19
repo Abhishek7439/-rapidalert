@@ -1,13 +1,13 @@
 {
   "projects": {
-    "default": "rapidalert-prod",
+    "default": "smart-community-8fd9a",
     "staging":  "rapidalert-staging"
   },
   "targets": {
-    "rapidalert-prod": {
+    "smart-community-8fd9a": {
       "hosting": {
-        "admin":   ["rapidalert-prod"],
-        "citizen": ["rapidalert-prod"]
+        "admin":   ["smart-community-8fd9a"],
+        "citizen": ["smart-community-8fd9a"]
       }
     }
   },

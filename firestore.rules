@@ -78,15 +78,15 @@ service cloud.firestore {
     // USERS
     // ═══════════════════════════════════════════════════════════
     match /users/{userId} {
+      // Read: own document (via phone auth) OR any officer
+      allow read: if (isOwner(userId) && request.auth.token.firebase.sign_in_provider == 'phone') || isOfficer();
 
-      // Read: own document OR any officer
-      allow read: if isOwner(userId) || isOfficer();
+      // Create: own document only (via phone auth)
+      allow create: if isOwner(userId) && request.auth.token.firebase.sign_in_provider == 'phone';
 
-      // Create: own document only (role can be set on first create for bootstrap)
-      allow create: if isOwner(userId);
-
-      // Update: own document only, cannot change own role after creation
+      // Update: own document only (via phone auth), cannot change own role
       allow update: if isOwner(userId)
+                    && request.auth.token.firebase.sign_in_provider == 'phone'
                     && userNoRoleEscalation();
 
       // Delete: super_admin only
@@ -98,8 +98,7 @@ service cloud.firestore {
     // ALERTS
     // ═══════════════════════════════════════════════════════════
     match /alerts/{alertId} {
-
-      // Read: any authenticated user (citizen app needs to display alerts)
+      // Read: any authenticated user
       allow read: if isAuth();
 
       // Create: any officer (district_officer or super_admin)
@@ -120,13 +119,13 @@ service cloud.firestore {
     // SOS REQUESTS
     // ═══════════════════════════════════════════════════════════
     match /sos_requests/{sosId} {
-
-      // Create: any authenticated citizen
+      // Create: any authenticated citizen (must use phone auth)
       allow create: if isAuth()
+                    && request.auth.token.firebase.sign_in_provider == 'phone'
                     && validSOSCreate(request.resource.data);
 
-      // Read: own SOS request OR any officer
-      allow read: if isOwner(resource.data.citizenUid) || isOfficer();
+      // Read: own SOS request (via phone auth) OR any officer
+      allow read: if (isOwner(resource.data.citizenUid) && request.auth.token.firebase.sign_in_provider == 'phone') || isOfficer();
 
       // Update: officers only, status fields only
       allow update: if isOfficer()
@@ -141,13 +140,15 @@ service cloud.firestore {
     // SAFE REPORTS  (citizen marks themselves safe after an alert)
     // ═══════════════════════════════════════════════════════════
     match /safe_reports/{reportId} {
-
+      // Create: own safe report (must use phone auth)
       allow create: if isAuth()
+                    && request.auth.token.firebase.sign_in_provider == 'phone'
                     && request.resource.data.citizenUid == uid()
                     && request.resource.data.keys().hasAll(['citizenUid', 'alertId', 'reportedAt'])
                     && request.resource.data.reportedAt == request.time;
 
-      allow read:   if isOwner(resource.data.citizenUid) || isOfficer();
+      // Read: own safe report (via phone auth) OR any officer
+      allow read:   if (isOwner(resource.data.citizenUid) && request.auth.token.firebase.sign_in_provider == 'phone') || isOfficer();
 
       allow update, delete: if false; // Immutable once created
     }

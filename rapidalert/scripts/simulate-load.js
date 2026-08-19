@@ -13,7 +13,7 @@ const admin = require('firebase-admin');
 
 if (!admin.apps.length) {
     admin.initializeApp({
-        projectId: 'rapidalert-prod'
+        projectId: 'smart-community-8fd9a'
     });
 }
 

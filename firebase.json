@@ -17,6 +17,14 @@
         ],
         "rewrites": [
             {
+                "source": "/api/send-otp",
+                "function": "sendOtp"
+            },
+            {
+                "source": "/api/verify-otp",
+                "function": "verifyOtp"
+            },
+            {
                 "source": "/",
                 "destination": "/rapidalert/index.html"
             },

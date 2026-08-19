@@ -9,7 +9,7 @@ const password = 'Password123!';
 const name = 'Admin User';
 
 admin.initializeApp({
-    projectId: 'rapidalert-prod',
+    projectId: 'smart-community-8fd9a',
 });
 
 const auth = admin.auth();

@@ -1,7 +1,7 @@
 {
   "scripts": {
     "start": "node scripts/start-dev.js",
-    "dev": "firebase emulators:start --project rapidalert-prod",
+    "dev": "firebase emulators:start --project smart-community-8fd9a",
     "setup-admin": "node scripts/setup-emulator-admin.js"
   },
   "dependencies": {

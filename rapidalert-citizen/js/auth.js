@@ -17,6 +17,7 @@
 import {
     RecaptchaVerifier,
     signInWithPhoneNumber,
+    signInWithCustomToken,
     onAuthStateChanged,
     signOut,
 } from 'https://www.gstatic.com/firebasejs/10.12.1/firebase-auth.js';
@@ -47,15 +48,23 @@ let _authResult = undefined; // buffered result (profile or null)
 onAuthStateChanged(auth, async (user) => {
     let resolvedValue;
     if (user) {
-        // Restore profile from Firestore
-        try {
-            const snap = await getDoc(doc(db, 'users', user.uid));
-            resolvedValue = snap.exists()
-                ? snap.data()
-                : { name: 'Citizen', phone: user.phoneNumber };
-        } catch (err) {
-            console.error('[CitizenAuth] Profile fetch error:', err);
-            resolvedValue = { name: 'Citizen', phone: user.phoneNumber || '', uid: user.uid };
+        // Enforce that the user MUST be authenticated via Phone (SMS Auth) or Twilio custom token
+        const isTwilioMode = window.RAPIDALERT_CONFIG?.authMode === 'twilio';
+        if (!user.phoneNumber && !isTwilioMode) {
+            console.warn('[CitizenAuth] User authenticated via non-phone provider. Signing out.');
+            await signOut(auth).catch(() => {});
+            resolvedValue = null;
+        } else {
+            // Restore profile from Firestore
+            try {
+                const snap = await getDoc(doc(db, 'users', user.uid));
+                resolvedValue = snap.exists()
+                    ? snap.data()
+                    : { name: 'Citizen', phone: user.phoneNumber, uid: user.uid };
+            } catch (err) {
+                console.error('[CitizenAuth] Profile fetch error:', err);
+                resolvedValue = { name: 'Citizen', phone: user.phoneNumber || '', uid: user.uid };
+            }
         }
     } else {
         resolvedValue = null;
@@ -130,18 +139,47 @@ function getPhoneStepHTML() {
       </div>`;
 }
 
+function getOtpApiUrl(action) { // action = 'send-otp' or 'verify-otp'
+    const configuredUrl = (window.RAPIDALERT_CONFIG?.otpServerUrl || '').trim();
+    
+    // 1. Direct Cloud Functions domain
+    if (configuredUrl.includes('cloudfunctions.net')) {
+        const fnName = action === 'send-otp' ? 'sendOtp' : 'verifyOtp';
+        return `${configuredUrl.replace(/\/$/, '')}/${fnName}`;
+    }
+    
+    // 2. Localhost or explicit port
+    if (configuredUrl.startsWith('http://') || configuredUrl.startsWith('https://')) {
+        const cleanBase = configuredUrl.replace(/\/$/, '');
+        return cleanBase.endsWith('/api') ? `${cleanBase}/${action}` : `${cleanBase}/api/${action}`;
+    }
+
+    // 3. Relative or empty URL -> /api/send-otp or /api/verify-otp
+    const cleanBase = configuredUrl.replace(/\/$/, '');
+    if (!cleanBase || cleanBase === '/api') {
+        return `/api/${action}`;
+    }
+    return `${cleanBase}/${action}`;
+}
+
 function attachPhoneStepHandlers(onSuccessCb) {
     const phoneInput = document.getElementById('auth-phone');
     const sendBtn = document.getElementById('send-otp-btn');
     const phoneErrEl = document.getElementById('phone-error');
+    const isTwilioMode = window.RAPIDALERT_CONFIG?.authMode === 'twilio';
 
-    // ── Invisible reCAPTCHA setup ──────────────────────────────────
-    // Must be created AFTER the recaptcha-container element is in the DOM.
+    // ── Invisible reCAPTCHA setup (initialized for Firebase mode / fallback) ──────
     let recaptchaVerifier;
     try {
+        let container = document.getElementById('recaptcha-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'recaptcha-container';
+            document.body.appendChild(container);
+        }
         recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
             size: 'invisible',
-            callback: () => { /* reCAPTCHA solved — proceed silently */ },
+            callback: () => { /* reCAPTCHA solved */ },
             'expired-callback': () => {
                 showPhoneError('reCAPTCHA expired. Please try again.');
                 sendBtn.disabled = false;
@@ -176,31 +214,74 @@ function attachPhoneStepHandlers(onSuccessCb) {
         pendingPhone = fullPhone;
 
         try {
-            confirmationResult = await signInWithPhoneNumber(auth, fullPhone, recaptchaVerifier);
-            otpSendCount++;
+            let useFirebaseFallback = false;
+
+            if (isTwilioMode) {
+                // ── TWILIO MODE: Call standalone OTP server ──────────────
+                try {
+                    const resp = await fetch(getOtpApiUrl('send-otp'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: fullPhone }),
+                    });
+                    const data = await resp.json();
+                    if (!resp.ok) throw new Error(data.error || 'Failed to send OTP');
+
+                    otpSendCount++;
+                    console.log('[CitizenAuth] Twilio OTP sent successfully.');
+                    if (data.devCode) {
+                        console.log('[CitizenAuth] Dev code:', data.devCode);
+                        // Automatically pre-fill fallback code in browser to make it easy for testing
+                        setTimeout(() => {
+                            const codeInput = document.getElementById('auth-otp');
+                            if (codeInput) {
+                                codeInput.value = data.devCode;
+                                // Trigger input event to enable verify button
+                                codeInput.dispatchEvent(new Event('input'));
+                            }
+                        }, 500);
+                    }
+                } catch (twilioErr) {
+                    console.warn('[CitizenAuth] Twilio OTP server offline, falling back to Firebase Auth:', twilioErr.message);
+                    useFirebaseFallback = true;
+                }
+            }
+
+            if (!isTwilioMode || useFirebaseFallback) {
+                // ── FIREBASE MODE: Original signInWithPhoneNumber ────────
+                if (useFirebaseFallback) {
+                    // Update authMode dynamically so step 2 verification does standard Firebase verification
+                    window.RAPIDALERT_CONFIG.authMode = 'firebase';
+                }
+                confirmationResult = await signInWithPhoneNumber(auth, fullPhone, recaptchaVerifier);
+                otpSendCount++;
+            }
 
             // Transition to OTP step
             const root = document.getElementById('app-root');
             if (root) {
                 root.innerHTML = getOTPStepHTML(phoneRaw);
                 attachOTPStepHandlers(onSuccessCb, fullPhone);
-                // In dev mode: auto-fetch OTP from emulator and fill boxes
-                setTimeout(() => devAutoFillOTP(fullPhone), 600);
+                const currentMode = window.RAPIDALERT_CONFIG?.authMode;
+                if (currentMode !== 'twilio') {
+                    setTimeout(() => devAutoFillOTP(fullPhone), 600);
+                }
             }
 
         } catch (err) {
-            console.error('[CitizenAuth] signInWithPhoneNumber error:', err.code, err.message);
+            console.error('[CitizenAuth] Send OTP error:', err.code || '', err.message);
             setPhoneLoading(false, sendBtn);
 
             const MSG = {
                 'auth/invalid-phone-number': 'Invalid phone number format.',
                 'auth/too-many-requests': 'Too many requests. Try again in a few minutes.',
                 'auth/quota-exceeded': 'SMS quota exceeded. Try again later.',
+                'auth/billing-not-enabled': 'SMS service not available. Please try again.',
                 'auth/network-request-failed': 'Network error. Check internet connection.',
                 'auth/captcha-check-failed': 'reCAPTCHA failed. Reload and try again.',
                 'auth/missing-phone-number': 'Phone number is required.',
             };
-            showPhoneError(MSG[err.code] || `Error: ${err.message}`);
+            showPhoneError(MSG[err.code] || err.message || 'Error sending OTP.');
         }
     });
 
@@ -240,13 +321,25 @@ function getOTPStepHTML(phoneRaw) {
             🔧 Dev Mode – Fetching OTP code…
           </div>` : ''}
 
-          <!-- 6 OTP digit boxes -->
-          <div class="otp-boxes" id="otp-boxes">
-            ${[0, 1, 2, 3, 4, 5].map(i =>
-        `<input type="text" class="otp-box" id="otp-box-${i}"
-                      maxlength="1" inputmode="numeric" pattern="[0-9]"
-                      autocomplete="${i === 0 ? 'one-time-code' : 'off'}">`
+          <!-- SMS Open Code / WebOTP compatible input layout -->
+          <div class="otp-input-container" style="position: relative; overflow: hidden; margin-bottom: 14px; height: 56px;">
+            <!-- Hidden real input field targeting autofill / auto-reading -->
+            <input
+              type="tel"
+              id="real-otp-input"
+              maxlength="6"
+              autocomplete="one-time-code"
+              inputmode="numeric"
+              pattern="[0-9]{6}"
+              style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; z-index: 10; cursor: pointer;"
+            />
+            
+            <!-- Visual boxes -->
+            <div class="otp-boxes" id="otp-boxes" style="pointer-events: none;">
+              ${[0, 1, 2, 3, 4, 5].map(i =>
+        `<div class="otp-box" id="otp-box-visual-${i}"></div>`
     ).join('')}
+            </div>
           </div>
 
           <div id="otp-error" class="auth-error" style="display:none"></div>
@@ -288,9 +381,11 @@ async function devAutoFillOTP(fullPhone) {
         const latest = codes[codes.length - 1];
 
         if (latest?.code) {
-            // Auto-fill the 6 boxes
-            const boxes = Array.from({ length: 6 }, (_, i) => document.getElementById(`otp-box-${i}`));
-            latest.code.split('').forEach((ch, i) => { if (boxes[i]) boxes[i].value = ch; });
+            const realInput = document.getElementById('real-otp-input');
+            if (realInput) {
+                realInput.value = latest.code;
+                realInput.dispatchEvent(new Event('input'));
+            }
             if (hintEl) {
                 hintEl.innerHTML = `🔧 <b>Dev OTP auto-filled: <span style="letter-spacing:4px;font-size:18px;font-weight:800;color:#60a5fa">${latest.code}</span></b><br><span style="font-size:11px;opacity:0.7">Tap Verify OTP →</span>`;
             }
@@ -305,36 +400,54 @@ async function devAutoFillOTP(fullPhone) {
 }
 
 function attachOTPStepHandlers(onSuccessCb, fullPhone) {
-    const boxes = Array.from({ length: 6 }, (_, i) => document.getElementById(`otp-box-${i}`));
+    const realInput = document.getElementById('real-otp-input');
+    const boxes = Array.from({ length: 6 }, (_, i) => document.getElementById(`otp-box-visual-${i}`));
     const verifyBtn = document.getElementById('verify-otp-btn');
     const otpErrEl = document.getElementById('otp-error');
     const resendBtn = document.getElementById('resend-btn');
     const timerEl = document.getElementById('resend-timer');
     const changeBtn = document.getElementById('change-phone-btn');
 
-    // Auto-focus first box
-    boxes[0]?.focus();
+    // Focus the hidden real input to trigger mobile keyboard
+    realInput?.focus();
 
-    // OTP box keyboard navigation & auto-advance
-    boxes.forEach((box, idx) => {
-        box.addEventListener('input', (e) => {
-            box.value = box.value.replace(/\D/g, '').slice(0, 1);
-            if (box.value && idx < 5) boxes[idx + 1].focus();
-            if (boxes.every(b => b.value)) verifyOTP(); // auto-submit when all filled
+    function updateVisualBoxes() {
+        const val = realInput.value;
+        boxes.forEach((box, i) => {
+            if (box) {
+                box.textContent = val[i] || '';
+                // Highlight the active visual box
+                const isActive = i === val.length || (i === 5 && val.length === 6);
+                const isFocused = document.activeElement === realInput;
+                
+                if (isActive && isFocused) {
+                    box.style.borderColor = 'var(--brand)';
+                    box.style.backgroundColor = 'rgba(232, 65, 65, 0.08)';
+                    box.style.boxShadow = '0 0 0 3px rgba(232, 65, 65, 0.15)';
+                } else {
+                    box.style.borderColor = 'var(--border)';
+                    box.style.backgroundColor = 'rgba(255, 255, 255, 0.06)';
+                    box.style.boxShadow = 'none';
+                }
+            }
         });
-        box.addEventListener('keydown', (e) => {
-            if (e.key === 'Backspace' && !box.value && idx > 0) boxes[idx - 1].focus();
+    }
+
+    // Input listeners to sync state
+    if (realInput) {
+        realInput.addEventListener('input', () => {
+            realInput.value = realInput.value.replace(/\D/g, '').slice(0, 6);
+            updateVisualBoxes();
+            if (realInput.value.length === 6) {
+                verifyOTP();
+            }
         });
-        // Handle paste into first box (fills all 6)
-        box.addEventListener('paste', (e) => {
-            e.preventDefault();
-            const pasted = (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, 6);
-            pasted.split('').forEach((ch, i) => { if (boxes[i]) boxes[i].value = ch; });
-            const nextEmpty = boxes.findIndex(b => !b.value);
-            if (nextEmpty >= 0) boxes[nextEmpty].focus();
-            else { boxes[5].focus(); verifyOTP(); }
-        });
-    });
+        realInput.addEventListener('focus', updateVisualBoxes);
+        realInput.addEventListener('blur', updateVisualBoxes);
+    }
+    
+    // Initial visual state
+    updateVisualBoxes();
 
     // Start 30-second resend countdown
     startResendTimer();
@@ -353,19 +466,34 @@ function attachOTPStepHandlers(onSuccessCb, fullPhone) {
         }
         resendBtn.style.display = 'none';
         showOTPError('');
-        boxes.forEach(b => b.value = '');
-        boxes[0].focus();
+        if (realInput) {
+            realInput.value = '';
+            updateVisualBoxes();
+            realInput.focus();
+        }
 
-        // Re-create the verifier
+        // Resend OTP
+        const isTwilioMode = window.RAPIDALERT_CONFIG?.authMode === 'twilio';
         try {
-            const verifier = new RecaptchaVerifier(auth, 'resend-recaptcha', { size: 'invisible' });
-            let tempDiv = document.getElementById('resend-recaptcha');
-            if (!tempDiv) {
-                tempDiv = document.createElement('div');
-                tempDiv.id = 'resend-recaptcha';
-                document.getElementById('app-root').appendChild(tempDiv);
+            if (isTwilioMode) {
+                const resp = await fetch(getOtpApiUrl('send-otp'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: pendingPhone }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed to resend OTP');
+                if (data.devCode) console.log('[CitizenAuth] Dev resend code:', data.devCode);
+            } else {
+                const verifier = new RecaptchaVerifier(auth, 'resend-recaptcha', { size: 'invisible' });
+                let tempDiv = document.getElementById('resend-recaptcha');
+                if (!tempDiv) {
+                    tempDiv = document.createElement('div');
+                    tempDiv.id = 'resend-recaptcha';
+                    document.getElementById('app-root').appendChild(tempDiv);
+                }
+                confirmationResult = await signInWithPhoneNumber(auth, pendingPhone, verifier);
             }
-            confirmationResult = await signInWithPhoneNumber(auth, pendingPhone, verifier);
             otpSendCount++;
             startResendTimer();
         } catch (err) {
@@ -375,13 +503,41 @@ function attachOTPStepHandlers(onSuccessCb, fullPhone) {
     });
 
     async function verifyOTP() {
-        const otp = boxes.map(b => b.value).join('');
+        if (!realInput) return;
+        const otp = realInput.value;
         if (otp.length < 6) { showOTPError('Enter all 6 digits.'); return; }
 
         setVerifyLoading(true);
+        const isTwilioMode = window.RAPIDALERT_CONFIG?.authMode === 'twilio';
 
         try {
-            const { user } = await confirmationResult.confirm(otp);
+            let user;
+
+            if (isTwilioMode) {
+                // ── TWILIO MODE: Verify OTP via server, get Firebase custom token ──
+                const resp = await fetch(getOtpApiUrl('verify-otp'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: fullPhone, code: otp }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    throw { code: 'auth/invalid-verification-code', message: data.error || 'Verification failed' };
+                }
+
+                // Sign into Firebase with the custom token from our OTP server
+                const cred = await signInWithCustomToken(auth, data.token);
+                user = cred.user;
+
+                // Update user's phone number in their profile if not set
+                console.log('[CitizenAuth] Twilio OTP verified, signed in as:', user.uid);
+
+            } else {
+                // ── FIREBASE MODE: Original confirm flow ──
+                const result = await confirmationResult.confirm(otp);
+                user = result.user;
+            }
+
             clearInterval(resendTimer);
 
             // Upsert user document in Firestore
@@ -389,7 +545,7 @@ function attachOTPStepHandlers(onSuccessCb, fullPhone) {
             onSuccessCb(profile);
 
         } catch (err) {
-            console.error('[CitizenAuth] confirm error:', err.code, err.message);
+            console.error('[CitizenAuth] verify error:', err.code || '', err.message);
             setVerifyLoading(false);
 
             const MSG = {
@@ -398,9 +554,10 @@ function attachOTPStepHandlers(onSuccessCb, fullPhone) {
                 'auth/missing-verification-code': 'Enter the 6-digit OTP from your SMS.',
                 'auth/too-many-requests': 'Too many attempts. Wait before trying again.',
             };
-            showOTPError(MSG[err.code] || `Verification failed: ${err.message}`);
-            boxes.forEach(b => b.value = '');
-            boxes[0].focus();
+            showOTPError(MSG[err.code] || err.message || 'Verification failed.');
+            realInput.value = '';
+            updateVisualBoxes();
+            realInput.focus();
         }
     }
 
@@ -425,7 +582,7 @@ function attachOTPStepHandlers(onSuccessCb, fullPhone) {
     function setVerifyLoading(on) {
         verifyBtn.disabled = on;
         verifyBtn.textContent = on ? 'Verifying…' : 'Verify OTP →';
-        boxes.forEach(b => b.disabled = on);
+        if (realInput) realInput.disabled = on;
     }
 }
 
@@ -433,6 +590,7 @@ function attachOTPStepHandlers(onSuccessCb, fullPhone) {
 // ── Create / update citizen Firestore document ────────────────────────────────
 async function upsertCitizenProfile(user) {
     const userRef = doc(db, 'users', user.uid);
+    const userPhone = user.phoneNumber || pendingPhone; // pendingPhone is fallback for Twilio custom token mode
     let profile;
 
     try {
@@ -446,7 +604,7 @@ async function upsertCitizenProfile(user) {
             // Brand new citizen — create document with defaults
             profile = {
                 uid: user.uid,
-                phone: user.phoneNumber,
+                phone: userPhone,
                 name: `Citizen-${user.uid.slice(-6)}`,
                 role: 'citizen',
                 district: null,
@@ -463,7 +621,7 @@ async function upsertCitizenProfile(user) {
         console.error('[CitizenAuth] upsertCitizenProfile error:', err);
         profile = {
             uid: user.uid,
-            phone: user.phoneNumber,
+            phone: userPhone,
             name: `Citizen-${user.uid.slice(-6)}`,
             role: 'citizen',
         };
