@@ -62,7 +62,7 @@ if (!window.RAPIDALERT_CONFIG) {
             appId: "1:864478830317:web:f6eb2213f8c222363b36e4",
         },
         vapidKey: "YOUR_VAPID_KEY",
-        otpServerUrl: isLocal ? "http://localhost:3001" : "https://rapidalert-otp.onrender.com",
+        otpServerUrl: isLocal ? "http://localhost:3001" : "https://rapidalert.vercel.app",
         authMode: "twilio",
         env: isLocal ? "development" : "production"
     };
