@@ -26,16 +26,39 @@ const CONFIG = {
 // ── Firebase Admin SDK Init ──────────────────────────────────────────────────
 if (!admin.apps.length) {
     try {
-        const serviceAccount = require('./serviceAccountKey.json');
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-            projectId: 'smart-community-8fd9a',
-        });
-        console.log('✅ Firebase Admin initialized with service account key.');
+        const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+        const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+        const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+        const projectId = process.env.FIREBASE_PROJECT_ID || 'smart-community-8fd9a';
+
+        if (serviceAccountJson) {
+            const serviceAccount = JSON.parse(serviceAccountJson);
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                projectId: serviceAccount.project_id || projectId,
+            });
+            console.log('✅ Firebase Admin initialized with service account JSON from env.');
+        } else if (privateKey && clientEmail) {
+            admin.initializeApp({
+                credential: admin.credential.cert({
+                    projectId: projectId,
+                    clientEmail: clientEmail,
+                    privateKey: privateKey.replace(/\\n/g, '\n'),
+                }),
+                projectId: projectId,
+            });
+            console.log('✅ Firebase Admin initialized with private key/email from env.');
+        } else {
+            const serviceAccount = require('./serviceAccountKey.json');
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                projectId: 'smart-community-8fd9a',
+            });
+            console.log('✅ Firebase Admin initialized with service account key file.');
+        }
     } catch (err) {
         admin.initializeApp({ projectId: 'smart-community-8fd9a' });
-        console.warn('⚠️  Firebase Admin initialized WITHOUT service account.');
-        console.warn('   Download serviceAccountKey.json from Firebase Console → Project Settings → Service Accounts');
+        console.warn('⚠️  Firebase Admin initialized WITHOUT credentials:', err.message);
     }
 }
 
