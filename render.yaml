@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: rapidalert-otp
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_VERIFY_SID
+        sync: false
+      - key: NODE_ENV
+        value: production

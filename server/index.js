@@ -53,14 +53,7 @@ try {
 const app = express();
 
 app.use(cors({
-    origin: [
-        'https://smart-community-8fd9a.web.app',
-        'https://smart-community-8fd9a.firebaseapp.com',
-        'http://localhost:5000',
-        'http://127.0.0.1:5000',
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-    ],
+    origin: true,
     methods: ['POST', 'GET', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
 }));

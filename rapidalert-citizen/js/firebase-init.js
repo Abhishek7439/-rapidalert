@@ -55,7 +55,7 @@ if (!window.RAPIDALERT_CONFIG) {
             appId: "1:864478830317:web:f6eb2213f8c222363b36e4",
         },
         vapidKey: "YOUR_VAPID_KEY",
-        otpServerUrl: isLocal ? "http://localhost:3001" : "https://asia-south1-smart-community-8fd9a.cloudfunctions.net",
+        otpServerUrl: isLocal ? "http://localhost:3001" : "https://rapidalert-otp.onrender.com",
         authMode: "twilio",
         env: isLocal ? "development" : "production"
     };
