@@ -60,6 +60,31 @@ app.use(cors({
 
 app.use(express.json());
 
+// ── Root status check ────────────────────────────────────────────────────────
+app.get('/', (req, res) => {
+    res.send(`
+        <html>
+            <head>
+                <title>RapidAlert OTP Server</title>
+                <style>
+                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; text-align: center; padding: 50px; }
+                    .card { max-width: 500px; margin: auto; background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #334155; }
+                    h1 { color: #f43f5e; margin-bottom: 10px; }
+                    p { color: #94a3b8; font-size: 16px; line-height: 1.5; }
+                    .status { display: inline-block; padding: 6px 12px; background: #10b981; color: white; border-radius: 20px; font-weight: bold; font-size: 14px; margin-top: 15px; }
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <h1>🚨 RapidAlert OTP Server</h1>
+                    <p>The Twilio Verify OTP backend service is running successfully on Vercel!</p>
+                    <div class="status">● Status: Active</div>
+                </div>
+            </body>
+        </html>
+    `);
+});
+
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
     res.json({
