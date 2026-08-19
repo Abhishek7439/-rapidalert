@@ -18,6 +18,8 @@ import {
     RecaptchaVerifier,
     signInWithPhoneNumber,
     signInWithCustomToken,
+    GoogleAuthProvider,
+    signInWithPopup,
     onAuthStateChanged,
     signOut,
 } from 'https://www.gstatic.com/firebasejs/10.12.1/firebase-auth.js';
@@ -48,22 +50,34 @@ let _authResult = undefined; // buffered result (profile or null)
 onAuthStateChanged(auth, async (user) => {
     let resolvedValue;
     if (user) {
-        // Enforce that the user MUST be authenticated via Phone (SMS Auth) or Twilio custom token
-        const isTwilioMode = window.RAPIDALERT_CONFIG?.authMode === 'twilio';
-        if (!user.phoneNumber && !isTwilioMode) {
-            console.warn('[CitizenAuth] User authenticated via non-phone provider. Signing out.');
-            await signOut(auth).catch(() => {});
-            resolvedValue = null;
-        } else {
-            // Restore profile from Firestore
+        const authMode = window.RAPIDALERT_CONFIG?.authMode || 'twilio';
+        
+        if (authMode === 'google') {
+            // Google authentication mode
             try {
                 const snap = await getDoc(doc(db, 'users', user.uid));
-                resolvedValue = snap.exists()
-                    ? snap.data()
-                    : { name: 'Citizen', phone: user.phoneNumber, uid: user.uid };
+                resolvedValue = snap.exists() ? snap.data() : null; // returns null to trigger complete profile flow if user doc doesn't exist yet
             } catch (err) {
                 console.error('[CitizenAuth] Profile fetch error:', err);
-                resolvedValue = { name: 'Citizen', phone: user.phoneNumber || '', uid: user.uid };
+                resolvedValue = { name: user.displayName || 'Citizen', phone: '', uid: user.uid };
+            }
+        } else {
+            // Original Twilio / Phone SMS mode
+            const isTwilioMode = authMode === 'twilio';
+            if (!user.phoneNumber && !isTwilioMode) {
+                console.warn('[CitizenAuth] User authenticated via non-phone provider. Signing out.');
+                await signOut(auth).catch(() => {});
+                resolvedValue = null;
+            } else {
+                try {
+                    const snap = await getDoc(doc(db, 'users', user.uid));
+                    resolvedValue = snap.exists()
+                        ? snap.data()
+                        : { name: 'Citizen', phone: user.phoneNumber || pendingPhone || '', uid: user.uid };
+                } catch (err) {
+                    console.error('[CitizenAuth] Profile fetch error:', err);
+                    resolvedValue = { name: 'Citizen', phone: user.phoneNumber || pendingPhone || '', uid: user.uid };
+                }
             }
         }
     } else {
@@ -89,8 +103,174 @@ function renderAuthScreen(onSuccessCb) {
     const root = document.getElementById('app-root');
     if (!root) return;
 
-    root.innerHTML = getPhoneStepHTML();
-    attachPhoneStepHandlers(onSuccessCb);
+    const authMode = window.RAPIDALERT_CONFIG?.authMode || 'twilio';
+    if (authMode === 'google') {
+        if (auth.currentUser) {
+            renderCompleteProfileScreen(auth.currentUser, onSuccessCb);
+        } else {
+            renderGoogleLoginScreen(onSuccessCb);
+        }
+    } else {
+        root.innerHTML = getPhoneStepHTML();
+        attachPhoneStepHandlers(onSuccessCb);
+    }
+}
+
+// ── Google Authentication Screens ─────────────────────────────────────────────
+
+function renderGoogleLoginScreen(onSuccessCb) {
+    const root = document.getElementById('app-root');
+    if (!root) return;
+
+    root.innerHTML = `
+      <div class="auth-container">
+        <div class="auth-card">
+          <div class="auth-logo">🚨</div>
+          <div class="auth-title">RapidAlert</div>
+          <div class="auth-subtitle">Emergency Management · Citizen App</div>
+          <div class="auth-desc" style="margin-bottom: 25px;">
+            Sign in securely with your Google Account to access emergency services and alerts.
+          </div>
+          <div id="google-error" class="auth-error" style="display:none; margin-bottom: 15px;"></div>
+          <button class="auth-btn" id="google-login-btn">
+            Sign in with Google
+          </button>
+          <div class="auth-hint">
+            🔒 Secure authentication via Google.
+          </div>
+        </div>
+      </div>`;
+
+    const loginBtn = document.getElementById('google-login-btn');
+    const errEl = document.getElementById('google-error');
+
+    loginBtn.addEventListener('click', async () => {
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Signing in...';
+        if (errEl) errEl.style.display = 'none';
+
+        try {
+            const provider = new GoogleAuthProvider();
+            const result = await signInWithPopup(auth, provider);
+            const user = result.user;
+            
+            // Check if profile document exists in Firestore
+            const snap = await getDoc(doc(db, 'users', user.uid));
+            if (snap.exists()) {
+                const profile = snap.data();
+                // Store in buffered result and trigger callbacks
+                _authResult = profile;
+                _authResolved = true;
+                onSuccessCb(profile);
+            } else {
+                renderCompleteProfileScreen(user, onSuccessCb);
+            }
+        } catch (err) {
+            console.error('[CitizenAuth] Google login error:', err);
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Sign in with Google';
+            if (errEl) {
+                errEl.textContent = err.message || 'Login failed. Please try again.';
+                errEl.style.display = 'block';
+            }
+        }
+    });
+}
+
+function renderCompleteProfileScreen(user, onSuccessCb) {
+    const root = document.getElementById('app-root');
+    if (!root) return;
+
+    root.innerHTML = `
+      <div class="auth-container">
+        <div class="auth-card">
+          <div class="auth-logo">📝</div>
+          <div class="auth-title">Complete Profile</div>
+          <div class="auth-subtitle">Enter your details to finish registration</div>
+          <div class="auth-desc" style="margin-bottom: 20px;">
+            RapidAlert needs your name and phone number to send location-targeted emergency alerts.
+          </div>
+          <div style="text-align: left; width: 100%;">
+            <label style="font-size: 13px; color: #94a3b8; display: block; margin-bottom: 6px;">Full Name</label>
+            <input type="text" id="profile-name" class="auth-input" style="width: 100%; margin-bottom: 15px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: white;" value="${user.displayName || ''}" placeholder="John Doe" />
+            
+            <label style="font-size: 13px; color: #94a3b8; display: block; margin-bottom: 6px;">Mobile Number</label>
+            <div class="phone-field-group" style="margin-bottom: 20px;">
+              <div class="country-code">+91</div>
+              <input type="tel" id="profile-phone" class="auth-input" maxlength="10" placeholder="10-digit mobile number" style="width: 100%;" />
+            </div>
+          </div>
+          <div id="profile-error" class="auth-error" style="display:none; margin-bottom: 15px;"></div>
+          <button class="auth-btn" id="save-profile-btn">
+            Save and Continue →
+          </button>
+        </div>
+      </div>`;
+
+    const nameInput = document.getElementById('profile-name');
+    const phoneInput = document.getElementById('profile-phone');
+    const saveBtn = document.getElementById('save-profile-btn');
+    const errEl = document.getElementById('profile-error');
+
+    // Phone format listener
+    phoneInput.addEventListener('input', () => {
+        phoneInput.value = phoneInput.value.replace(/\D/g, '').slice(0, 10);
+        if (errEl) errEl.style.display = 'none';
+    });
+    
+    nameInput.addEventListener('input', () => {
+        if (errEl) errEl.style.display = 'none';
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const nameVal = nameInput.value.trim();
+        const phoneVal = phoneInput.value.trim();
+
+        if (!nameVal) {
+            if (errEl) { errEl.textContent = 'Please enter your full name.'; errEl.style.display = 'block'; }
+            return;
+        }
+
+        if (!/^[6-9][0-9]{9}$/.test(phoneVal)) {
+            if (errEl) { errEl.textContent = 'Enter a valid 10-digit Indian mobile number (starting with 6–9).'; errEl.style.display = 'block'; }
+            return;
+        }
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+
+        try {
+            const userPhone = `+91${phoneVal}`;
+            const userRef = doc(db, 'users', user.uid);
+            const profile = {
+                uid: user.uid,
+                phone: userPhone,
+                name: nameVal,
+                role: 'citizen',
+                district: null,
+                city: null,
+                fcmToken: null,
+                location: null,
+                geohash: null,
+                createdAt: serverTimestamp(),
+                lastSeen: serverTimestamp(),
+            };
+            await setDoc(userRef, profile);
+            
+            // Set the global variables and call success callback
+            _authResult = profile;
+            _authResolved = true;
+            onSuccessCb(profile);
+        } catch (err) {
+            console.error('[CitizenAuth] Error saving profile:', err);
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save and Continue →';
+            if (errEl) {
+                errEl.textContent = 'Error saving profile. Please try again.';
+                errEl.style.display = 'block';
+            }
+        }
+    });
 }
 
 
